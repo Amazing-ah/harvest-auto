@@ -12,6 +12,7 @@ const path = require('path');
 const axios = require('axios');
 const inquirer = require('inquirer');
 const prompt = inquirer.createPromptModule();
+const ora = require('ora').default;
 
 // ------ 环境变量与配置 ------
 
@@ -96,23 +97,59 @@ async function createTimeEntry({ date, project, task, notes, hours }) {
 }
 
 // ------ 核心导入逻辑（可单独require引用） ------
+/**
+ * 导入所有日报，每日总工时保证 >=8 小时，单条工时随机，最后一条补足。
+ */
 async function fillAllReports(dailyReports) {
   for (const { date, items } of dailyReports) {
-    for (const item of items) {
-      const hours = getRandomHours();
+    const arrLen = items.length;
+    // 先为每条明细分配初始随机工时（1.5-2.5）
+    let hoursArr = Array.from(
+      { length: arrLen },
+      () => Math.round((Math.random() + 1.5) * 10) / 10
+    );
+    let sum = hoursArr.reduce((a, b) => a + b, 0);
+
+    // 如果当天总时长 < 8 小时，则补足差值
+    if (sum < 8 && arrLen > 0) {
+      const diff = 8 - sum;
+      if (arrLen === 1) {
+        hoursArr[0] = Math.round((hoursArr[0] + diff) * 10) / 10;
+      } else {
+        // 前n-1条加少量，最后一条补齐
+        const perAdd = Math.floor((diff / arrLen) * 10) / 10;
+        for (let i = 0; i < arrLen - 1; i++) {
+          hoursArr[i] = Math.round((hoursArr[i] + perAdd) * 10) / 10;
+        }
+        // 最后一条直接用目标总量-前n-1条累加
+        const partialSum = hoursArr
+          .slice(0, arrLen - 1)
+          .reduce((a, b) => a + b, 0);
+        hoursArr[arrLen - 1] = Math.round((8 - partialSum) * 10) / 10;
+      }
+      // 理论上总和正好8，如果分配有偏差（浮点误差），完全可忽略
+    }
+
+    for (let i = 0; i < arrLen; i++) {
+      const item = items[i];
+      const hours = hoursArr[i];
+      // 使用 ora 动画
+      const spinner = ora(
+        `工时填写中: ${date} | ${item.project} - ${item.task} ...`
+      ).start();
+
       try {
         await createTimeEntry({
           ...item,
           date,
           hours,
         });
-        console.log(
+        spinner.succeed(
           `✔ 填报成功 | ${date} | ${item.project} - ${item.task} | ${hours}h | ${item.notes}`
         );
       } catch (err) {
-        console.error(
-          `✗ 填报失败 | ${date} | ${item.project} - ${item.task} | ${item.notes}\n`,
-          err.response?.data || err.message || err
+        spinner.fail(
+          `✗ 填报失败 | ${date} | ${item.project} - ${item.task} | ${item.notes}\n${err.response?.data || err.message || err}`
         );
       }
     }
@@ -202,7 +239,7 @@ if (require.main === module) {
         console.log(JSON.stringify(dailyReports, null, 2));
         console.log('[dry-run] 未实际上报。');
       } else {
-        fillAllReports(dailyReports);
+        await fillAllReports(dailyReports);
       }
     } catch (err) {
       if (err && err.name === 'ExitPromptError') {

@@ -4,15 +4,14 @@
   "description": "一键导入日报到Harvest的CLI工具，支持命令行及require引入",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "import-csv": "node -e \"const Harvest = require('./harvest-automation.js'); const h = new Harvest(process.env.HARVEST_TOKEN, process.env.HARVEST_ACCOUNT_ID); h.importFromCSV(process.argv[2])\"",
-    "import-json": "node -e \"const Harvest = require('./harvest-automation.js'); const h = new Harvest(process.env.HARVEST_TOKEN, process.env.HARVEST_ACCOUNT_ID); h.importFromJSON(process.argv[2])\""
+    "start": "node index.js"
   },
   "dependencies": {
     "axios": "^1.6.0",
     "commander": "^11.0.0",
     "dotenv": "^16.5.0",
-    "inquirer": "^12.6.3"
+    "inquirer": "^12.6.3",
+    "ora": "^8.2.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1",

@@ -10,10 +10,20 @@
 
 ## 安装
 
+### 方式一：本地安装
+
 首先克隆或下载本仓库，然后在项目目录下安装依赖：
 
 ```bash
 npm install
+```
+
+### 方式二：全局安装（推荐）
+
+你可以通过 npm 全局安装本工具，这样在任何目录下都可以直接运行：
+
+```bash
+npm install -g harvest-auto
 ```
 
 ---
@@ -21,6 +31,26 @@ npm install
 ## 环境配置（全局/本地）
 
 ### 全局配置首选（推荐！）
+
+全局安装后，直接在命令行运行以下命令，会自动在主目录创建配置文件（如 `~/.harvest-auto.env`）：
+
+```bash
+harvest-auto
+```
+
+如果配置未完善，会引导你去编辑 `~/.harvest-auto.env` 文件。用文本编辑器（如 VSCode）打开后，填写你的 Harvest 账号信息、API Token 和项目/任务 ID 映射等。
+
+配置好环境后，你可以在任意路径下直接运行：
+
+```bash
+harvest-auto -f "/完整/路径/日报.json"
+```
+
+如需仅预览而不提交，可加 `--dry-run`：
+
+```bash
+harvest-auto -f "/完整/路径/日报.json" --dry-run
+```
 
 1. **首次运行工具时，会自动在你的主目录（如 `~/.harvest-auto.env`）生成配置模板**，内容如下：
 
@@ -32,7 +62,7 @@ npm install
     TASK_MAP={"任务A":任务A 的 id,"任务B":任务B 的 id}
     ```
 
-    - 如果工具**未能自动打开配置文件**进行编辑，请用你喜欢的文本编辑器（如 VSCode、TextEdit、Sublime 等）手动打开：  
+    - 手动打开：
       `~/.harvest-auto.env`
     - 编辑并保存实际的账号/token/项目和任务的 ID 后再次运行本工具即可正常使用。
 
@@ -80,20 +110,30 @@ npm install
 
 ### CLI 命令行用法
 
+#### 全局安装用户
+
+全局安装后可直接使用如下命令，无需 npx：
+
+```bash
+harvest-auto -f "/完整/路径/日报.json"
+```
+
+#### 本地安装用户
+
 ```bash
 npx harvest-auto -f "/完整/路径/日报.json"
 ```
 
 - **如果路径中含有空格，务必用英文引号 `"` 包裹整个路径**
   例如：
-  `npx harvest-auto -f "/Users/用户名/工作日报 2024.06.json"`
+  `harvest-auto -f "/Users/用户名/工作日报 2024.06.json"`
 
 - 未加 `-f` 时，终端会交互式提示输入文件路径，并自动净化首尾空格/引号/换行。
 
 - 如需预览内容而非真正上报，可加 `--dry-run`：
 
   ```
-  npx harvest-auto -f "/路径/日报.json" --dry-run
+  harvest-auto -f "/路径/日报.json" --dry-run
   ```
 
   仅输出即将上报的 JSON，不提交数据。
