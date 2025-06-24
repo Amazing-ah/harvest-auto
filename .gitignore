@@ -1,0 +1,27 @@
+# Node.js 依赖
+node_modules/
+
+# 本地/全局配置及敏感文件
+.env
+.env.local
+.env.*.local
+.harvest-auto.env
+
+# 编辑器临时文件
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+.vscode/
+.idea/
+
+# macOS 系统文件
+.DS_Store
+
+# 日志
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 其他
+# 可添加其他不希望提交到 git 的私有文件
