@@ -23,9 +23,13 @@
     "automation",
     "api"
   ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Amazing-ah/harvest-auto.git"
+  },
   "bin": {
     "harvest-auto": "index.js"
   },
-  "author": "Your Name",
-  "license": "MIT"
+  "author": "whtg"
 }
