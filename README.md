@@ -23,7 +23,7 @@ npm install
 你可以通过 npm 全局安装本工具，这样在任何目录下都可以直接运行：
 
 ```bash
-npm install -g harvest-auto
+npm install -g @whtg/harvest-auto
 ```
 
 ---
