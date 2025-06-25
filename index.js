@@ -73,8 +73,51 @@ try {
 }
 
 // ------ 工时生成 ------
-function getRandomHours() {
-  return Math.round((Math.random() + 1.5) * 10) / 10;
+// 正态分布采样+边界修正，使每条工时在1.4~2.4、全部不同、总和大于等于8h即可
+function getNormalRandom(mean = 0, std = 1) {
+  // Box-Muller 方法
+  let u = Math.random();
+  let v = Math.random();
+  let z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  return z * std + mean;
+}
+
+function normalHoursArr(len, min = 1.4, max = 2.4, minTotal = 8) {
+  // 限制最大波动
+  const mean = +((min + max) / 2).toFixed(2);
+  const std = Math.min((max - min) / 5, 0.18);
+
+  let arr,
+    tries = 0;
+  while (true) {
+    arr = [];
+    let pool = new Set();
+    for (let i = 0; i < len; i++) {
+      let val = getNormalRandom(mean, std);
+      if (val < min) val = min + Math.random() * 0.09;
+      if (val > max) val = max - Math.random() * 0.09;
+      val = Math.round(val * 10) / 10;
+      // 全部需唯一
+      if (!pool.has(val)) {
+        arr.push(val);
+        pool.add(val);
+      } else {
+        i--;
+      }
+    }
+    // 总和校验（只要大于等于8即可）
+    let s = arr.reduce((a, b) => a + b, 0);
+    if (
+      s >= minTotal &&
+      arr.every((x) => x >= min && x <= max) &&
+      new Set(arr).size === len
+    )
+      return arr;
+    if (++tries > 150) {
+      // 极端多次采不到，可选：临时放宽，无硬性补齐/或报错
+      throw new Error('采样超出重试限制，请增加区间或减少条目数。');
+    }
+  }
 }
 
 // ------ Harvest接口 ------
@@ -102,37 +145,14 @@ async function createTimeEntry({ date, project, task, notes, hours }) {
 
 // ------ 核心导入逻辑（可单独require引用） ------
 /**
- * 导入所有日报，每日总工时保证 >=8 小时，单条工时随机，最后一条补足。
+ * 导入所有日报，每日总工时保证 >=8 小时，单条工时1.4~2.4随机，最后一条补足。
  */
 async function fillAllReports(dailyReports) {
   for (const { date, items } of dailyReports) {
     const arrLen = items.length;
-    // 先为每条明细分配初始随机工时（1.5-2.5）
-    let hoursArr = Array.from(
-      { length: arrLen },
-      () => Math.round((Math.random() + 1.5) * 10) / 10
-    );
-    let sum = hoursArr.reduce((a, b) => a + b, 0);
 
-    // 如果当天总时长 < 8 小时，则补足差值
-    if (sum < 8 && arrLen > 0) {
-      const diff = 8 - sum;
-      if (arrLen === 1) {
-        hoursArr[0] = Math.round((hoursArr[0] + diff) * 10) / 10;
-      } else {
-        // 前n-1条加少量，最后一条补齐
-        const perAdd = Math.floor((diff / arrLen) * 10) / 10;
-        for (let i = 0; i < arrLen - 1; i++) {
-          hoursArr[i] = Math.round((hoursArr[i] + perAdd) * 10) / 10;
-        }
-        // 最后一条直接用目标总量-前n-1条累加
-        const partialSum = hoursArr
-          .slice(0, arrLen - 1)
-          .reduce((a, b) => a + b, 0);
-        hoursArr[arrLen - 1] = Math.round((8 - partialSum) * 10) / 10;
-      }
-      // 理论上总和正好8，如果分配有偏差（浮点误差），完全可忽略
-    }
+    // 使用正态分布+边界修正，确保每条不同、都在区间、总和大于等于8
+    let hoursArr = normalHoursArr(arrLen, 1.4, 2.4, 8);
 
     for (let i = 0; i < arrLen; i++) {
       const item = items[i];
@@ -147,6 +167,11 @@ async function fillAllReports(dailyReports) {
         item.task && typeof item.task === 'string'
           ? item.task.replace(/[\s\u3000]/g, '').trim()
           : '';
+
+      // 调试输出
+      console.log(
+        `【填报debug】date:${date} project:"${project}" task:"${task}" note:"${item.notes}"`
+      );
 
       // 使用 ora 动画
       const spinner = ora(
