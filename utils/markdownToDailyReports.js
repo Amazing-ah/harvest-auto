@@ -94,12 +94,12 @@ function parseMarkdownToDailyReports(mdContent) {
     // 校验必填
     if (!project) {
       throw new Error(
-        `[格式错误][${curDate}] 明细 '${line}'：缺少项目(project)，请补充 [project:XXX] 标签或先声明全局项目`
+        `[格式错误][${curDate}] 明细 '${line}'：缺少项目(project)，请补充 [project:XXX] 标签或先声明全局 project`
       );
     }
     if (!task) {
       throw new Error(
-        `[格式错误][${curDate}] 明细 '${line}'：缺少任务(task)，请补充 [task:XXX] 标签或先声明全局任务`
+        `[格式错误][${curDate}] 明细 '${line}'：缺少任务(task)，请补充 [task:XXX] 标签或先声明全局 task`
       );
     }
 

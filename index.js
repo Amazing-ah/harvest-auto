@@ -220,10 +220,14 @@ if (require.main === module) {
   // 路径净化函数：去除首尾空格、引号和换行
   function cleanPath(val) {
     if (!val) return val;
-    return val
-      .trim()
-      .replace(/^"+|"+$/g, '')
-      .replace(/\r?\n/g, '');
+    return (
+      val
+        .trim()
+        .replace(/^"+|"+$/g, '')
+        .replace(/\r?\n/g, '')
+        // 通用反斜杠转义字符还原（空格、&, (, )、中文符号等终端粘贴都支持）
+        .replace(/\\(.)/g, '$1')
+    );
   }
 
   (async () => {
