@@ -16,7 +16,7 @@
 - **项目、任务可全局声明或精细到每条优先级**
   - `[project:Web]` / `[task:Android]` 可以单独设置，也可某一天全局声明
   - 行内标签优先于全局声明，不用每条都重复写
-  
+
 
 - **工时智能分配**
   - 每条事项自动分配 1.46~3 小时（通常分布于 2 小时附近，有轻度浮动）
@@ -93,42 +93,37 @@ TASK_MAP={"开发":12345,"测试":45678,"Web":33333}
 
 ```md
 2025-07-01
-[project:Web][task:Notify] 日志内容A
-[task:Review] 日志内容B
-[project:SC] 日志内容C
-无标签的内容D（自动继承最近的全局声明）
+[project:AAA][task:BBB]
+日志内容A
+日志内容B
+[project:SC]
+[task:CCC]日志内容C
+日志内容D
 
-2025-07-02
-[project:SC]                # 全局声明本段 project
-[task:Web] 内容1            # 单条 task 覆盖
-[task:Android] 内容2        # 单条 task 覆盖
-内容3                       # 继承 [project:SC]，如果有全局 task 也可继承
-
-2025-07-03
-[project:Web][task:Review]  # 全局声明
-业务重构                    # 继承全局 project/task
-需求沟通                    # 继承全局
-[project:App] UI联调         # 单条 project 覆盖，全局 task
-
-2025-07-04
-[project:API]
-[task:开发]
-A模组实现                   # 继承全局
-B模组重构                   # 继承全局
-[task:复盘] C模块问题讨论     # 仅 task 局部覆盖，全局 project
-[project:UI][task:测试] UI反馈 # 全部局部覆盖
-
-2025-07-05
-[project:Web]
-内容A
-内容B
-[project:App]
-内容C
-内容D    # 不同天/不同段可多次声明 project，切换极其灵活
+**解析结果：**
+```json
+[
+  {
+    "date": "2025-07-01",
+    "items": [
+      { "project": "AAA", "task": "BBB", "notes": "日志内容A" },
+      { "project": "AAA", "task": "BBB", "notes": "日志内容B" },
+      { "project": "SC",  "task": "CCC", "notes": "日志内容C" },
+      { "project": "SC",  "task": "BBB", "notes": "日志内容D" }
+    ]
+  }
+]
 ```
 
+**说明：**
+- 单条标签（如 `[task:CCC]日志内容C`）仅作用于该行，后续未再声明则回退使用最近的全局声明（如 task:BBB）。
+- 全局声明（单独一行，如 `[project:SC]`）影响当前及其后的所有未声明内容。
+- 继承规则与优先级：单条标签 > 最近的全局声明 > 缺失时报错。
+
+---
+
 **优先级说明：**
-单条标签 > 全局声明（同一段内可多次全局切换） > 报错（缺失）
+单条标签 > 全局声明（单独一行的即为全局） > 报错（缺失）
 
 ---
 
@@ -253,3 +248,6 @@ fillAllReports([
 - 遇到 Harvest API 502 网关错误，则自动重试最多 3 次（递增延迟），确保网络偶发问题下自动稳定填报。
 - 日志输出优化，对采样异常和超长加班等情况有详细提示但不跳过或中止。
 - 文档/说明同步更新，与功能保持一致。
+
+### 1.0.5
+优化文档说明
