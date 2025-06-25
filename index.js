@@ -73,51 +73,59 @@ try {
 }
 
 // ------ 工时生成 ------
-// 正态分布采样+边界修正，使每条工时在1.4~2.4、全部不同、总和大于等于8h即可
-function getNormalRandom(mean = 0, std = 1) {
-  // Box-Muller 方法
-  let u = Math.random();
-  let v = Math.random();
-  let z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-  return z * std + mean;
-}
-
-function normalHoursArr(len, min = 1.4, max = 2.4, minTotal = 8) {
-  // 限制最大波动
-  const mean = +((min + max) / 2).toFixed(2);
-  const std = Math.min((max - min) / 5, 0.18);
-
-  let arr,
-    tries = 0;
-  while (true) {
-    arr = [];
-    let pool = new Set();
+// 新采样: 每条1.46-3，偏向2，确保每日总工时[8,10]且分配合理
+function normalHoursArr(len, min = 1.46, max = 3, dayTotal = 8) {
+  const maxTries = 200;
+  // 先快速排除不合法的请求
+  if (min * len > dayTotal || max * len < dayTotal) {
+    throw new Error(
+      '明细条数与每日总工时、单条区间不符，请减少条数或调整规则。'
+    );
+  }
+  for (let t = 0; t < maxTries; t++) {
+    let left = dayTotal;
+    const arr = [];
     for (let i = 0; i < len; i++) {
-      let val = getNormalRandom(mean, std);
-      if (val < min) val = min + Math.random() * 0.09;
-      if (val > max) val = max - Math.random() * 0.09;
-      val = Math.round(val * 10) / 10;
-      // 全部需唯一
-      if (!pool.has(val)) {
-        arr.push(val);
-        pool.add(val);
+      let localMin = min;
+      let localMax = max;
+      // 剩余最小/最大用于保证必合法
+      if (i < len - 1) {
+        // 后面条数*最小工时
+        localMax = Math.min(max, left - min * (len - i - 1));
+        localMin = Math.max(min, left - max * (len - i - 1));
+        if (localMax < localMin) {
+          // 本轮采样失败，重采
+          break;
+        }
+        // 偏向于2左右
+        let bias = 2;
+        let range = localMax - localMin;
+        // 加入偏好中心
+        let v = +(localMin + Math.random() * range).toFixed(2);
+        if (range >= 1) {
+          // 带中心偏移
+          v = +Math.max(
+            localMin,
+            Math.min(localMax, bias + (Math.random() - 0.5) * range * 0.8)
+          ).toFixed(2);
+        }
+        arr.push(v);
+        left -= v;
       } else {
-        i--;
+        // 最后一条直接补齐
+        arr.push(+left.toFixed(2));
       }
     }
-    // 总和校验（只要大于等于8即可）
-    let s = arr.reduce((a, b) => a + b, 0);
+    // 验证合法
     if (
-      s >= minTotal &&
-      arr.every((x) => x >= min && x <= max) &&
-      new Set(arr).size === len
-    )
+      arr.length === len &&
+      arr.every((v) => v >= min && v <= max) &&
+      +arr.reduce((a, b) => a + b, 0).toFixed(2) === +dayTotal.toFixed(2)
+    ) {
       return arr;
-    if (++tries > 150) {
-      // 极端多次采不到，可选：临时放宽，无硬性补齐/或报错
-      throw new Error('采样超出重试限制，请增加区间或减少条目数。');
     }
   }
+  throw new Error('采样超出重试限制，请减少条数或调整工时设置。');
 }
 
 // ------ Harvest接口 ------
@@ -143,6 +151,26 @@ async function createTimeEntry({ date, project, task, notes, hours }) {
   });
 }
 
+// ------ 502自动重试封装 ------
+async function createTimeEntryWithRetry(args, maxRetry = 3, delay = 1000) {
+  let lastErr;
+  for (let i = 0; i < maxRetry; i++) {
+    try {
+      return await createTimeEntry(args);
+    } catch (err) {
+      lastErr = err;
+      // 检查是否是502网关错误
+      const status = err.response?.status || err.status;
+      if (status !== 502) throw err;
+      // 502: 自动重试，延迟递增
+      if (i < maxRetry - 1) {
+        await new Promise((r) => setTimeout(r, delay * (i + 1)));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 // ------ 核心导入逻辑（可单独require引用） ------
 /**
  * 导入所有日报，每日总工时保证 >=8 小时，单条工时1.4~2.4随机，最后一条补足。
@@ -150,9 +178,40 @@ async function createTimeEntry({ date, project, task, notes, hours }) {
 async function fillAllReports(dailyReports) {
   for (const { date, items } of dailyReports) {
     const arrLen = items.length;
+    // 区间必须吻合采样逻辑
+    const min = 1.46;
+    const max = 3;
+    // 求最大、最小允许总和
+    const minSum = +(min * arrLen).toFixed(2);
+    const maxSum = +(max * arrLen).toFixed(2);
+    // 动态生成 dayTotal，使其处于允许区间且几个工作日不会完全一样
+    let dayTotal;
+    let tries = 0;
+    do {
+      dayTotal = +(8 + Math.random() * 2).toFixed(2); // 8~10 之间取2位
+      tries++;
+      // 超范围自动强收敛
+      if (dayTotal < minSum) dayTotal = minSum;
+      if (dayTotal > maxSum) dayTotal = maxSum;
+    } while (++tries < 5 && (dayTotal < minSum || dayTotal > maxSum));
 
-    // 使用正态分布+边界修正，确保每条不同、都在区间、总和大于等于8
-    let hoursArr = normalHoursArr(arrLen, 1.4, 2.4, 8);
+    let hoursArr;
+    try {
+      hoursArr = normalHoursArr(arrLen, min, max, dayTotal);
+    } catch (e) {
+      // 容错：前n-1条为min，最后一条补足
+      hoursArr = Array(arrLen).fill(min);
+      hoursArr[arrLen - 1] = +(dayTotal - min * (arrLen - 1)).toFixed(2);
+      if (hoursArr[arrLen - 1] > max) {
+        console.warn(
+          `⚠️ 警告：${date} 工时分配异常（总工时 ${dayTotal}，明细数 ${arrLen}）。已自动兜底，最后一条工时 ${hoursArr[arrLen - 1]} 超出最大单条工时 ${max}，请关注明细合理性。\n如需严格限制，请手动调整该天明细内容。`
+        );
+      } else {
+        console.warn(
+          `⚠️ 警告：${date} 工时分配异常（总工时 ${dayTotal}，明细数 ${arrLen}）。已自动兜底，不符合正常分配分布，请关注该天明细。`
+        );
+      }
+    }
 
     for (let i = 0; i < arrLen; i++) {
       const item = items[i];
@@ -168,18 +227,13 @@ async function fillAllReports(dailyReports) {
           ? item.task.replace(/[\s\u3000]/g, '').trim()
           : '';
 
-      // 调试输出
-      console.log(
-        `【填报debug】date:${date} project:"${project}" task:"${task}" note:"${item.notes}"`
-      );
-
       // 使用 ora 动画
       const spinner = ora(
-        `工时填写中: ${date} | ${project} - ${task} ...`
+        `工时填写中: ${date} | ${project} - ${task} - ${hours}h ...`
       ).start();
 
       try {
-        await createTimeEntry({
+        await createTimeEntryWithRetry({
           ...item,
           date,
           project,
@@ -191,7 +245,7 @@ async function fillAllReports(dailyReports) {
         );
       } catch (err) {
         spinner.fail(
-          `✗ 填报失败 | ${date} | ${project} - ${task} | ${item.notes}\n${err.response?.data || err.message || err}`
+          `✗ 填报失败 | ${date} | ${project} - ${task} | ${hours}h | ${item.notes}\n${err.response?.data || err.message || err}`
         );
       }
     }
