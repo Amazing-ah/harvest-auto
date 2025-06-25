@@ -13,6 +13,9 @@ const axios = require('axios');
 const inquirer = require('inquirer');
 const prompt = inquirer.createPromptModule();
 const ora = require('ora').default;
+const {
+  parseMarkdownToDailyReports,
+} = require('./utils/markdownToDailyReports');
 
 // ------ 环境变量与配置 ------
 
@@ -76,6 +79,7 @@ function getRandomHours() {
 
 // ------ Harvest接口 ------
 async function createTimeEntry({ date, project, task, notes, hours }) {
+  // --- 调试输出结束 ---
   const project_id = PROJECT_MAP[project];
   const task_id = TASK_MAP[task];
   if (!project_id) throw new Error(`项目[${project}]未配置映射`);
@@ -133,23 +137,36 @@ async function fillAllReports(dailyReports) {
     for (let i = 0; i < arrLen; i++) {
       const item = items[i];
       const hours = hoursArr[i];
+
+      // project/task都去除全角/半角空白，始终取明细自身字段
+      const project =
+        item.project && typeof item.project === 'string'
+          ? item.project.replace(/[\s\u3000]/g, '').trim()
+          : '';
+      const task =
+        item.task && typeof item.task === 'string'
+          ? item.task.replace(/[\s\u3000]/g, '').trim()
+          : '';
+
       // 使用 ora 动画
       const spinner = ora(
-        `工时填写中: ${date} | ${item.project} - ${item.task} ...`
+        `工时填写中: ${date} | ${project} - ${task} ...`
       ).start();
 
       try {
         await createTimeEntry({
           ...item,
           date,
+          project,
+          task,
           hours,
         });
         spinner.succeed(
-          `✔ 填报成功 | ${date} | ${item.project} - ${item.task} | ${hours}h | ${item.notes}`
+          `✔ 填报成功 | ${date} | ${project} - ${task} | ${hours}h | ${item.notes}`
         );
       } catch (err) {
         spinner.fail(
-          `✗ 填报失败 | ${date} | ${item.project} - ${item.task} | ${item.notes}\n${err.response?.data || err.message || err}`
+          `✗ 填报失败 | ${date} | ${project} - ${task} | ${item.notes}\n${err.response?.data || err.message || err}`
         );
       }
     }
@@ -229,9 +246,17 @@ if (require.main === module) {
       let dailyReports = [];
       try {
         const content = fs.readFileSync(p, 'utf-8');
-        dailyReports = JSON.parse(content);
+        try {
+          // 先尝试 JSON 格式
+          dailyReports = JSON.parse(content);
+        } catch {
+          // 非 JSON 时，尝试用 md/daylog 转换器
+          dailyReports = parseMarkdownToDailyReports(content);
+        }
+        if (!Array.isArray(dailyReports) || dailyReports.length === 0)
+          throw new Error('无有效日报内容');
       } catch (e) {
-        console.error('读取日报 JSON 文件失败:', e.message || e);
+        console.error('读取/解析日报文件失败:', e.message || e);
         process.exit(1);
       }
 

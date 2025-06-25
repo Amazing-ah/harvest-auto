@@ -79,7 +79,9 @@ harvest-auto -f "/完整/路径/日报.json" --dry-run
 
 ---
 
-## 日报 JSON 文件格式
+## 日报文件格式：支持 JSON 或 Markdown/文本格式
+
+### 方式一：标准 JSON
 
 日报文件应为数组，每个元素有 `date`（日期）、`items`（当日多项明细）。每一明细包含 `project`、`task`、`notes` 三字段。例如：
 
@@ -103,6 +105,27 @@ harvest-auto -f "/完整/路径/日报.json" --dry-run
   }
 ]
 ```
+
+---
+
+### 方式二：简单文本/markdown日记风（无需手动转json，推荐！）
+你可以直接写如下格式，每天开头 `YYYY-MM-DD project: '项目名'`，下方每行都是一条事项，保存为 `.md` 或 `.txt` 也可：
+
+```
+2025-06-23 project: 'SC'
+Handled upload exceptions, changed the location of error alerts, and enhanced error description display.
+Researched the issue of first login leading to the chat module, discovering no data present.
+
+2025-06-24 project: 'SC'
+Cooperated with the backend to resolve the issue of empty session id and token for new user logins.
+Changed the data handling method, added separate storage for session id and token.
+```
+
+- 无需每行加 `-`、无需自己转json，每一行自动作为当天的事项导入
+- `project` 由头部自动识别，`task` 自动默认为“开发”，如需细分可导入后到 Harvest 平台手动调整
+- 支持.md/.txt/.daylog等扩展名（只要内容格式如上即可）
+
+工具会自动识别 JSON 或 Markdown/文本风日报，无需单独转换！
 
 ---
 
