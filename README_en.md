@@ -174,16 +174,22 @@ Found a bug, have ideas, or want to contribute new features? Feel free to open a
 
 ## Changelog
 
+### 1.0.7
+- Optimized Ctrl+C quitting/abort experience for initialization/config flow—no stacktrace, just a clear user message;
+- Initial language selection supports smart preset, no redundant double entry;
+- Multi-language support explicitly uses HARVEST_AUTO_LANG (CN/EN) — consistent in docs and code;
+- Changelog and FAQ structure now clearer and more detailed.
+
 ### 1.0.6
-- Terminal setup wizard for config on first run—no manual editing needed, instantly usable
-- Added completion and manual termination prompts
-- Bilingual interface support & command-line config modification
+- Terminal setup wizard for config on first run—no manual editing needed, instantly usable.
+- Added completion and manual termination prompts.
+- Bilingual interface support & command-line config modification.
 
 ### 1.0.5
-- Documentation improvements
+- Documentation improvements.
 
 ### 1.0.4
-- Work hour allocation: now 1.46~3h per item; 8~10h total per day, randomized for realism
-- Failed allocation invokes fallback with detailed warning, submission won’t stop
-- 502 and other Harvest API errors auto-retry up to 3 times for robustness
-- Log and documentation improvements
+- Work hour allocation: now 1.46~3h per item; 8~10h total per day, randomized for realism.
+- Failed allocation invokes fallback with detailed warning, submission won’t stop.
+- 502 and other Harvest API errors auto-retry up to 3 times for robustness.
+- Log and documentation improvements.
