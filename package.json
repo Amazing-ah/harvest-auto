@@ -1,6 +1,6 @@
 {
   "name": "@whtg/harvest-auto",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "一键导入日报到Harvest的CLI工具,One-click import daily reports to Harvest CLI tool",
   "main": "index.js",
   "scripts": {
