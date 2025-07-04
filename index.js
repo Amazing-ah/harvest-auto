@@ -17,18 +17,16 @@ const {
   parseMarkdownToDailyReports,
 } = require('./utils/markdownToDailyReports');
 const { ensureUserEnvFileInteractive } = require('./utils/envSetup');
+const { MSG } = require('./i18n/messages');
 
 // ------ 环境变量与配置 ------
 
 // ------ 工时生成 ------
-// 新采样: 每条1.46-3，偏向2，确保每日总工时[8,10]且分配合理
-function normalHoursArr(len, min = 1.46, max = 3, dayTotal = 8) {
+function normalHoursArr(len, min = 1.46, max = 3, dayTotal = 8, LANG = 'CN') {
   const maxTries = 200;
   // 先快速排除不合法的请求
   if (min * len > dayTotal || max * len < dayTotal) {
-    throw new Error(
-      '明细条数与每日总工时、单条区间不符，请减少条数或调整规则。'
-    );
+    throw new Error(MSG[LANG].HOURS_RANGE_ERROR);
   }
   for (let t = 0; t < maxTries; t++) {
     let left = dayTotal;
@@ -73,19 +71,19 @@ function normalHoursArr(len, min = 1.46, max = 3, dayTotal = 8) {
       return arr;
     }
   }
-  throw new Error('采样超出重试限制，请减少条数或调整工时设置。');
+  throw new Error(MSG[LANG].HOURS_SAMPLING_ERROR);
 }
 
 // ------ Harvest接口 ------
-// 传递 PROJECT_MAP、TASK_MAP、HARVEST_ACCOUNT_ID、HARVEST_TOKEN、USER_AGENT 作为参数
 async function createTimeEntry(
   { date, project, task, notes, hours },
-  { PROJECT_MAP, TASK_MAP, HARVEST_ACCOUNT_ID, HARVEST_TOKEN, USER_AGENT }
+  { PROJECT_MAP, TASK_MAP, HARVEST_ACCOUNT_ID, HARVEST_TOKEN, USER_AGENT },
+  LANG = 'CN'
 ) {
   const project_id = PROJECT_MAP[project];
   const task_id = TASK_MAP[task];
-  if (!project_id) throw new Error(`项目[${project}]未配置映射`);
-  if (!task_id) throw new Error(`任务[${task}]未配置映射`);
+  if (!project_id) throw new Error(MSG[LANG].PROJECT_NOT_MAPPED(project));
+  if (!task_id) throw new Error(MSG[LANG].TASK_NOT_MAPPED(task));
 
   const data = { project_id, task_id, spent_date: date, hours, notes };
 
@@ -106,13 +104,14 @@ async function createTimeEntry(
 async function createTimeEntryWithRetry(
   args,
   opts,
+  LANG = 'CN',
   maxRetry = 3,
   delay = 1000
 ) {
   let lastErr;
   for (let i = 0; i < maxRetry; i++) {
     try {
-      return await createTimeEntry(args, opts);
+      return await createTimeEntry(args, opts, LANG);
     } catch (err) {
       lastErr = err;
       // 检查是否是502网关错误
@@ -132,7 +131,7 @@ async function createTimeEntryWithRetry(
  * 导入所有日报，每日总工时保证 >=8 小时，单条工时1.4~2.4随机，最后一条补足。
  * 传入 opts 以携带PROJECT_MAP、TASK_MAP等
  */
-async function fillAllReports(dailyReports, opts) {
+async function fillAllReports(dailyReports, opts, LANG) {
   for (const { date, items } of dailyReports) {
     const arrLen = items.length;
     // 区间必须吻合采样逻辑
@@ -154,18 +153,18 @@ async function fillAllReports(dailyReports, opts) {
 
     let hoursArr;
     try {
-      hoursArr = normalHoursArr(arrLen, min, max, dayTotal);
+      hoursArr = normalHoursArr(arrLen, min, max, dayTotal, LANG);
     } catch (e) {
       // 容错：前n-1条为min，最后一条补足
       hoursArr = Array(arrLen).fill(min);
       hoursArr[arrLen - 1] = +(dayTotal - min * (arrLen - 1)).toFixed(2);
       if (hoursArr[arrLen - 1] > max) {
         console.warn(
-          `⚠️ 警告：${date} 工时分配异常（总工时 ${dayTotal}，明细数 ${arrLen}）。已自动兜底，最后一条工时 ${hoursArr[arrLen - 1]} 超出最大单条工时 ${max}，请关注明细合理性。\n如需严格限制，请手动调整该天明细内容。`
+          MSG[LANG].WARNING_HOURS_ITEMS(date, dayTotal, arrLen, max, true)
         );
       } else {
         console.warn(
-          `⚠️ 警告：${date} 工时分配异常（总工时 ${dayTotal}，明细数 ${arrLen}）。已自动兜底，不符合正常分配分布，请关注该天明细。`
+          MSG[LANG].WARNING_HOURS_ITEMS(date, dayTotal, arrLen, max, false)
         );
       }
     }
@@ -186,7 +185,7 @@ async function fillAllReports(dailyReports, opts) {
 
       // 使用 ora 动画
       const spinner = ora(
-        `工时填写中: ${date} | ${project} - ${task} - ${hours}h ...`
+        MSG[LANG].SUBMIT_PROGRESS(date, project, task, hours)
       ).start();
 
       try {
@@ -198,14 +197,22 @@ async function fillAllReports(dailyReports, opts) {
             task,
             hours,
           },
-          opts
+          opts,
+          LANG
         );
         spinner.succeed(
-          `✔ 填报成功 | ${date} | ${project} - ${task} | ${hours}h | ${item.notes}`
+          MSG[LANG].SUBMIT_OK(date, project, task, hours, item.notes)
         );
       } catch (err) {
         spinner.fail(
-          `✗ 填报失败 | ${date} | ${project} - ${task} | ${hours}h | ${item.notes}\n${err.response?.data || err.message || err}`
+          MSG[LANG].SUBMIT_FAIL(
+            date,
+            project,
+            task,
+            hours,
+            item.notes,
+            err.response?.data || err.message || err
+          )
         );
       }
     }
@@ -216,13 +223,14 @@ module.exports = { fillAllReports };
 
 // ------ CLI部分 ------
 if (require.main === module) {
-  // 捕获 Ctrl+C，友好中断提示
+  // 捕获 Ctrl+C，友好中断提示（多语言）
   process.on('SIGINT', () => {
-    console.log(
-      '\n\x1b[33m%s\x1b[0m',
-      '⚠️ 检测到你使用 Ctrl + C 主动中断，程序已终止。如需继续，请重新运行命令。'
-    );
-    process.exit(130);
+    // 用 env 里正确的 HARVEST_AUTO_LANG
+    const { MSG } = require('./i18n/messages');
+    let LANG = (process.env.HARVEST_AUTO_LANG || 'CN').toUpperCase().trim();
+    if (!MSG[LANG]) LANG = 'CN';
+    console.log('\x1b[33m%s\x1b[0m', MSG[LANG].SIGINT);
+    process.exit(0);
   });
   // 首次运行时交互式创建配置
   (async () => {
@@ -242,10 +250,7 @@ if (require.main === module) {
     try {
       PROJECT_MAP = JSON.parse(process.env.PROJECT_MAP || '{}');
     } catch (e) {
-      console.error(
-        '\x1b[31m%s\x1b[0m',
-        '\n[配置错误] PROJECT_MAP 配置不是合法 JSON，请编辑 ~/.harvest-auto.env 按如下格式：\n\nPROJECT_MAP={"项目A":12345,"项目B":67890}\n'
-      );
+      console.error('\x1b[31m%s\x1b[0m', MSG[LANG].PROJECT_MAP_INVALID);
       process.exit(1);
     }
 
@@ -253,22 +258,22 @@ if (require.main === module) {
     try {
       TASK_MAP = JSON.parse(process.env.TASK_MAP || '{}');
     } catch (e) {
-      console.error(
-        '\x1b[31m%s\x1b[0m',
-        '\n[配置错误] TASK_MAP 配置不是合法 JSON，请编辑 ~/.harvest-auto.env 按如下格式：\n\nTASK_MAP={"任务A":11111,"任务B":22222}\n'
-      );
+      console.error('\x1b[31m%s\x1b[0m', MSG[LANG].TASK_MAP_INVALID);
       process.exit(1);
     }
+
+    // 在 dotenv 加载后定义 HARVEST_AUTO_LANG，并用于后续所有国际化
+    let LANG = (process.env.HARVEST_AUTO_LANG || 'CN').toUpperCase().trim();
+    // 防御性：不支持的 lang fallback
+    if (!MSG[LANG]) LANG = 'CN';
 
     program
       .name('harvest-auto')
       .usage('-f <日报json> [options]')
-      .description(
-        '一键导入日报到Harvest的CLI工具，需配置.env 或 ~/.harvest-auto.env'
-      )
-      .option('-f, --file <file>', '日报JSON文件路径')
-      .option('--dry-run', '仅打印将要导入的内容，不实际请求')
-      .helpOption('-h, --help', '显示帮助信息')
+      .description(MSG[LANG].CLI_DESC)
+      .option('-f, --file <file>', MSG[LANG].FILE_PATH_ASK)
+      .option('--dry-run', MSG[LANG].DRY_RUN)
+      .helpOption('-h, --help', MSG[LANG].IS_OK)
       .parse(process.argv);
 
     let { file, dryRun } = program.opts();
@@ -293,14 +298,14 @@ if (require.main === module) {
           {
             type: 'input',
             name: 'inputFile',
-            message: '请输入日报 JSON 文件的路径（可拖入/粘贴完整路径）：',
+            message: MSG[LANG].FILE_PATH_ASK,
             validate(val) {
               let p = cleanPath(val);
               if (p.startsWith('~')) {
                 p = path.join(process.env.HOME, p.slice(1));
               }
               if (!fs.existsSync(p)) {
-                return `找不到此文件（处理后路径：${p}），请确认路径输入正确。`;
+                return MSG[LANG].FILE_NOT_FOUND(p);
               }
               return true;
             },
@@ -318,12 +323,12 @@ if (require.main === module) {
         {
           type: 'confirm',
           name: 'confirmRead',
-          message: `你设置的日报 JSON 路径为：\n${p}\n是否确认无误？`,
+          message: MSG[LANG].FILE_PATH_CONFIRM(p),
           default: true,
         },
       ]);
       if (!confirmRead) {
-        console.log('已取消操作。');
+        console.log(MSG[LANG].CANCEL);
         process.exit(0);
       }
 
@@ -338,32 +343,34 @@ if (require.main === module) {
           dailyReports = parseMarkdownToDailyReports(content);
         }
         if (!Array.isArray(dailyReports) || dailyReports.length === 0)
-          throw new Error('无有效日报内容');
+          throw new Error(MSG[LANG].NO_VALID_REPORT);
       } catch (e) {
-        console.error('读取/解析日报文件失败:', e.message || e);
+        console.error(MSG[LANG].READ_FAIL, e.message || e);
         process.exit(1);
       }
 
       if (dryRun) {
         console.log(JSON.stringify(dailyReports, null, 2));
-        console.log('[dry-run] 未实际上报。');
+        console.log(MSG[LANG].DRY_RUN);
       } else {
-        await fillAllReports(dailyReports, {
-          PROJECT_MAP,
-          TASK_MAP,
-          HARVEST_ACCOUNT_ID,
-          HARVEST_TOKEN,
-          USER_AGENT,
-        });
-        // 所有填报完成后全局成功提示
-        console.log(
-          '\x1b[32m%s\x1b[0m',
-          '\n🎉 所有工时已成功自动填报完毕，任务全部结束！'
+        await fillAllReports(
+          dailyReports,
+          {
+            PROJECT_MAP,
+            TASK_MAP,
+            HARVEST_ACCOUNT_ID,
+            HARVEST_TOKEN,
+            USER_AGENT,
+          },
+          LANG
         );
+        // 所有填报完成后全局成功提示
+        console.log('\x1b[32m%s\x1b[0m', MSG[LANG].SUBMIT_FINISH);
       }
     } catch (err) {
       if (err && err.name === 'ExitPromptError') {
-        console.log('\n已取消操作。');
+        console.log('\n' + MSG[LANG].CANCEL);
+        console.log('\x1b[33m%s\x1b[0m', MSG[LANG].EXIT_MID);
         process.exit(0);
       }
       throw err;

@@ -3,6 +3,7 @@ const os = require('os');
 const path = require('path');
 const inquirer = require('inquirer');
 const prompt = inquirer.createPromptModule();
+const { MSG } = require('../i18n/messages');
 
 /**
  * 交互式创建~/.harvest-auto.env文件
@@ -13,57 +14,102 @@ const prompt = inquirer.createPromptModule();
 async function ensureUserEnvFileInteractive() {
   const homedir = os.homedir();
   const userEnvPath = path.join(homedir, '.harvest-auto.env');
-  if (!fs.existsSync(userEnvPath)) {
-    // 字段定义与说明
+  // 检查当前用户目录下文件是否存在
+  let isFirstRun = !fs.existsSync(userEnvPath);
+  let envContent = isFirstRun
+    ? ''
+    : fs.readFileSync(userEnvPath, { encoding: 'utf-8' });
+  let matchedLang = envContent.match(/^\s*HARVEST_AUTO_LANG\s*=\s*(\w+)/m);
+  let currentLang = matchedLang?.[1] || null;
+  let osLocale = Intl.DateTimeFormat().resolvedOptions().locale;
+  // 检测系统语言
+  let guessedLang = osLocale.startsWith('zh') ? 'CN' : 'EN';
+
+  // 要求选择语言（首次，或之前没 LANG 字段的情况）
+  if (isFirstRun || !currentLang) {
+    console.log('\n');
+    // 系统语言提示，双语合成
+    console.log(
+      '\x1b[36m%s\x1b[0m',
+      MSG[guessedLang].SYSTEM_LANG_DETECTED(osLocale)
+    );
+    const { selectedLang } = await prompt([
+      {
+        type: 'list',
+        name: 'selectedLang',
+        message: MSG[guessedLang].LANGUAGE_CHOICE,
+        choices: [
+          { name: MSG.CN.LANG_ZH, value: 'CN' },
+          { name: MSG.CN.LANG_EN, value: 'EN' },
+        ],
+        default: guessedLang,
+      },
+    ]);
+    currentLang = selectedLang;
+    // 如果不是首次（已有env文件但无LANG），补写一行LANG
+    if (!isFirstRun) {
+      let newContent =
+        envContent.trim() + `\nHARVEST_AUTO_LANG=${currentLang}\n`;
+      fs.writeFileSync(userEnvPath, newContent, { encoding: 'utf-8' });
+      console.log('\x1b[32m%s\x1b[0m', MSG[currentLang].ENV_PATCHED);
+    }
+  }
+
+  if (isFirstRun) {
+    // 字段定义与说明（中英双语，随 currentLang 切换）
+    // === 用 i18n 消息 ===
     const FIELDS = [
       {
         key: 'HARVEST_ACCOUNT_ID',
-        message: '请输入你的 Harvest 账号ID',
-        validate: (v) => !!v || '不能为空',
+        message: MSG[currentLang].HARVEST_ACCOUNT_ID,
+        validate: (v) =>
+          !!v || (currentLang === 'CN' ? '不能为空' : 'Cannot be empty'),
       },
       {
         key: 'HARVEST_TOKEN',
-        message: '请输入你的 Harvest API Token',
-        validate: (v) => !!v || '不能为空',
+        message: MSG[currentLang].HARVEST_TOKEN,
+        validate: (v) =>
+          !!v || (currentLang === 'CN' ? '不能为空' : 'Cannot be empty'),
       },
       {
         key: 'USER_AGENT',
-        message: '请输入自定义标识 (比如你的邮箱)',
-        validate: (v) => !!v || '不能为空',
+        message: MSG[currentLang].USER_AGENT,
+        validate: (v) =>
+          !!v || (currentLang === 'CN' ? '不能为空' : 'Cannot be empty'),
       },
       {
         key: 'PROJECT_MAP',
-        message: '请输入项目名到ID的映射 (如 {"项目A":12345,"项目B":67890})',
+        message: MSG[currentLang].PROJECT_MAP,
         validate: (v) => {
           try {
             const r = JSON.parse(v);
             return typeof r === 'object' && !Array.isArray(r)
               ? true
-              : '必须是合法JSON，形如 {"项目A":12345}';
+              : MSG[currentLang].PROJECT_MAP_ERR;
           } catch {
-            return '必须是合法JSON，形如 {"项目A":12345}';
+            return MSG[currentLang].PROJECT_MAP_ERR;
           }
         },
         filter: (v) => JSON.stringify(JSON.parse(v)),
       },
       {
         key: 'TASK_MAP',
-        message: '请输入任务名到ID的映射 (如 {"任务A":11111,"任务B":22222})',
+        message: MSG[currentLang].TASK_MAP,
         validate: (v) => {
           try {
             const r = JSON.parse(v);
             return typeof r === 'object' && !Array.isArray(r)
               ? true
-              : '必须是合法JSON，形如 {"任务A":11111}';
+              : MSG[currentLang].TASK_MAP_ERR;
           } catch {
-            return '必须是合法JSON，形如 {"任务A":11111}';
+            return MSG[currentLang].TASK_MAP_ERR;
           }
         },
         filter: (v) => JSON.stringify(JSON.parse(v)),
       },
     ];
 
-    let envData = {};
+    let envData = { LANG: currentLang };
 
     for (const f of FIELDS) {
       let confirmed = false;
@@ -82,7 +128,7 @@ async function ensureUserEnvFileInteractive() {
           {
             type: 'confirm',
             name: 'isOk',
-            message: `你输入的${f.key}为：\n${val}\n确认无误吗？`,
+            message: MSG[currentLang].CONFIRM(f.key, val),
             default: true,
           },
         ]);
@@ -91,8 +137,9 @@ async function ensureUserEnvFileInteractive() {
       envData[f.key] = val;
     }
 
-    // 拼装env内容
+    // 拼装env内容，LANG在最前
     const envTemplate = [
+      `HARVEST_AUTO_LANG=${envData.LANG}`,
       `HARVEST_ACCOUNT_ID=${envData.HARVEST_ACCOUNT_ID}`,
       `HARVEST_TOKEN=${envData.HARVEST_TOKEN}`,
       `USER_AGENT=${envData.USER_AGENT}`,
@@ -102,11 +149,7 @@ async function ensureUserEnvFileInteractive() {
     ].join('\n');
     fs.writeFileSync(userEnvPath, envTemplate, { encoding: 'utf-8' });
 
-    console.log(
-      '\x1b[32m%s\x1b[0m',
-      `已成功创建配置文件: ${userEnvPath}。\n将继续执行后续操作...\n`
-    );
-    // 不退出，让主程序可以直接继续
+    console.log('\x1b[32m%s\x1b[0m', MSG[currentLang].ENV_SUCCESS(userEnvPath));
     return;
   }
 }
