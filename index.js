@@ -16,7 +16,10 @@ const ora = require('ora').default;
 const {
   parseMarkdownToDailyReports,
 } = require('./utils/markdownToDailyReports');
-const { ensureUserEnvFileInteractive } = require('./utils/envSetup');
+const {
+  ensureUserEnvFileInteractive,
+  changeUserEnvFileInteractive,
+} = require('./utils/envSetup');
 const { MSG } = require('./i18n/messages');
 
 // ------ 环境变量与配置 ------
@@ -272,105 +275,126 @@ if (require.main === module) {
       .usage('-f <日报json> [options]')
       .description(MSG[LANG].CLI_DESC)
       .option('-f, --file <file>', MSG[LANG].FILE_PATH_ASK)
-      .option('--dry-run', MSG[LANG].DRY_RUN)
-      .helpOption('-h, --help', MSG[LANG].IS_OK)
+      .option('--dry-run', MSG[LANG].DRY_RUN_DESC)
+      .option(
+        '-c, --change',
+        LANG === 'CN'
+          ? '交互式修改 ~/.harvest-auto.env 配置文件'
+          : 'Interactively change ~/.harvest-auto.env config'
+      )
+      .helpOption('-h, --help', MSG[LANG].HELP_DESC)
       .parse(process.argv);
 
-    let { file, dryRun } = program.opts();
-
-    // 路径净化函数：去除首尾空格、引号和换行
-    function cleanPath(val) {
-      if (!val) return val;
-      return (
-        val
-          .trim()
-          .replace(/^"+|"+$/g, '')
-          .replace(/\r?\n/g, '')
-          // 通用反斜杠转义字符还原（空格、&, (, )、中文符号等终端粘贴都支持）
-          .replace(/\\(.)/g, '$1')
-      );
-    }
+    let { file, dryRun, change } = program.opts();
 
     try {
-      // 如未指定文件参数，则用inquirer交互获取
-      if (!file) {
-        const { inputFile } = await prompt([
-          {
-            type: 'input',
-            name: 'inputFile',
-            message: MSG[LANG].FILE_PATH_ASK,
-            validate(val) {
-              let p = cleanPath(val);
-              if (p.startsWith('~')) {
-                p = path.join(process.env.HOME, p.slice(1));
-              }
-              if (!fs.existsSync(p)) {
-                return MSG[LANG].FILE_NOT_FOUND(p);
-              }
-              return true;
-            },
-          },
-        ]);
-        file = inputFile;
-      }
-
-      // 确认环节和后续都清理路径
-      let p = cleanPath(file);
-      if (p.startsWith('~')) {
-        p = path.join(process.env.HOME, p.slice(1));
-      }
-      const { confirmRead } = await prompt([
-        {
-          type: 'confirm',
-          name: 'confirmRead',
-          message: MSG[LANG].FILE_PATH_CONFIRM(p),
-          default: true,
-        },
-      ]);
-      if (!confirmRead) {
-        console.log(MSG[LANG].CANCEL);
+      // 新增: 修改env配置命令
+      if (change) {
+        await changeUserEnvFileInteractive();
         process.exit(0);
       }
 
-      let dailyReports = [];
-      try {
-        const content = fs.readFileSync(p, 'utf-8');
-        try {
-          // 先尝试 JSON 格式
-          dailyReports = JSON.parse(content);
-        } catch {
-          // 非 JSON 时，尝试用 md/daylog 转换器
-          dailyReports = parseMarkdownToDailyReports(content);
-        }
-        if (!Array.isArray(dailyReports) || dailyReports.length === 0)
-          throw new Error(MSG[LANG].NO_VALID_REPORT);
-      } catch (e) {
-        console.error(MSG[LANG].READ_FAIL, e.message || e);
-        process.exit(1);
+      // 路径净化函数：去除首尾空格、引号和换行
+      function cleanPath(val) {
+        if (!val) return val;
+        return (
+          val
+            .trim()
+            .replace(/^"+|"+$/g, '')
+            .replace(/\r?\n/g, '')
+            // 通用反斜杠转义字符还原（空格、&, (, )、中文符号等终端粘贴都支持）
+            .replace(/\\(.)/g, '$1')
+        );
       }
 
-      if (dryRun) {
-        console.log(JSON.stringify(dailyReports, null, 2));
-        console.log(MSG[LANG].DRY_RUN);
-      } else {
-        await fillAllReports(
-          dailyReports,
+      try {
+        // 如未指定文件参数，则用inquirer交互获取
+        if (!file) {
+          const { inputFile } = await prompt([
+            {
+              type: 'input',
+              name: 'inputFile',
+              message: MSG[LANG].FILE_PATH_ASK,
+              validate(val) {
+                let p = cleanPath(val);
+                if (p.startsWith('~')) {
+                  p = path.join(process.env.HOME, p.slice(1));
+                }
+                if (!fs.existsSync(p)) {
+                  return MSG[LANG].FILE_NOT_FOUND(p);
+                }
+                return true;
+              },
+            },
+          ]);
+          file = inputFile;
+        }
+
+        // 确认环节和后续都清理路径
+        let p = cleanPath(file);
+        if (p.startsWith('~')) {
+          p = path.join(process.env.HOME, p.slice(1));
+        }
+        const { confirmRead } = await prompt([
           {
-            PROJECT_MAP,
-            TASK_MAP,
-            HARVEST_ACCOUNT_ID,
-            HARVEST_TOKEN,
-            USER_AGENT,
+            type: 'confirm',
+            name: 'confirmRead',
+            message: MSG[LANG].FILE_PATH_CONFIRM(p),
+            default: true,
           },
-          LANG
-        );
-        // 所有填报完成后全局成功提示
-        console.log('\x1b[32m%s\x1b[0m', MSG[LANG].SUBMIT_FINISH);
+        ]);
+        if (!confirmRead) {
+          console.log(MSG[LANG].CANCEL);
+          process.exit(0);
+        }
+
+        let dailyReports = [];
+        try {
+          const content = fs.readFileSync(p, 'utf-8');
+          try {
+            // 先尝试 JSON 格式
+            dailyReports = JSON.parse(content);
+          } catch {
+            // 非 JSON 时，尝试用 md/daylog 转换器
+            dailyReports = parseMarkdownToDailyReports(content);
+          }
+          if (!Array.isArray(dailyReports) || dailyReports.length === 0)
+            throw new Error(MSG[LANG].NO_VALID_REPORT);
+        } catch (e) {
+          console.error(MSG[LANG].READ_FAIL, e.message || e);
+          process.exit(1);
+        }
+
+        if (dryRun) {
+          console.log(JSON.stringify(dailyReports, null, 2));
+          console.log(MSG[LANG].DRY_RUN);
+        } else {
+          await fillAllReports(
+            dailyReports,
+            {
+              PROJECT_MAP,
+              TASK_MAP,
+              HARVEST_ACCOUNT_ID,
+              HARVEST_TOKEN,
+              USER_AGENT,
+            },
+            LANG
+          );
+          // 所有填报完成后全局成功提示
+          console.log('\x1b[32m%s\x1b[0m', MSG[LANG].SUBMIT_FINISH);
+        }
+      } catch (err) {
+        if (err && err.name === 'ExitPromptError') {
+          let tip = MSG[LANG].CANCEL + '\n' + (MSG[LANG].EXIT_MID || '');
+          console.log('\x1b[33m%s\x1b[0m', tip);
+          process.exit(0);
+        }
+        throw err;
       }
     } catch (err) {
       if (err && err.name === 'ExitPromptError') {
-        console.log('\n' + MSG[LANG].CANCEL);
-        console.log('\x1b[33m%s\x1b[0m', MSG[LANG].EXIT_MID);
+        let tip = MSG[LANG].CANCEL + '\n' + (MSG[LANG].EXIT_MID || '');
+        console.log('\x1b[33m%s\x1b[0m', tip);
         process.exit(0);
       }
       throw err;

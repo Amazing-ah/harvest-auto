@@ -30,6 +30,7 @@ const MSG = {
     READ_FAIL: '读取/解析日报文件失败:',
     NO_VALID_REPORT: '无有效日报内容',
     DRY_RUN: '[dry-run] 未实际上报。',
+    DRY_RUN_DESC: '演练模式，只输出效果，不进行实际上报',
     CANCEL: '已取消操作。',
     EXIT_MID:
       '⚠️ 检测到你在交互过程中主动中断，程序已终止。如需继续，请重新运行命令。',
@@ -39,6 +40,7 @@ const MSG = {
     LANG_EN: 'English (EN)',
     // 交互
     IS_OK: '确认无误吗？',
+    HELP_DESC: '展示帮助信息',
     // ctrl+c
     SIGINT:
       '⚠️ 检测到你使用 Ctrl + C 主动中断，程序已终止。如需继续，请重新运行命令。',
@@ -57,13 +59,65 @@ const MSG = {
       '\n[配置错误] PROJECT_MAP 配置不是合法 JSON，请编辑 ~/.harvest-auto.env 按如下格式：\n\nPROJECT_MAP={"项目A":12345,"项目B":67890}\n',
     TASK_MAP_INVALID:
       '\n[配置错误] TASK_MAP 配置不是合法 JSON，请编辑 ~/.harvest-auto.env 按如下格式：\n\nTASK_MAP={"任务A":11111,"任务B":22222}\n',
+    // --- 新增: 配置更改交互提示 ---
+    CHANGE_ENV_SELECT_FIELDS: '请选择你要更改的字段（可多选）：',
+    CHANGE_ENV_SELECT_FIELDS_EN:
+      'Select fields to change (multi-select is allowed):',
+    CHANGE_ENV_FIELD_ALL: '全部/所有字段（依次修改全部字段）',
+    CHANGE_ENV_FIELD_ALL_EN: 'All fields (edit all one by one)',
+    CHANGE_ENV_MUST_SELECT: '必须选择一个字段',
+    CHANGE_ENV_MUST_SELECT_EN: 'Select at least one',
+    ONLY_SELECT_ALL_OR_SUBSET: '请选择“全部字段”或若干具体字段，不能混选',
+    // for mode select
+    CHANGE_ENV_CHOOSE_MODE: '请选择更改全部字段，还是只更改指定字段？',
+    CHANGE_ENV_CHOOSE_ALL: '全部字段（依次更改全部）',
+    CHANGE_ENV_CHOOSE_PART: '选择部分字段（多选）',
+    // HARVEST_AUTO_LANG 字段
+    HARVEST_AUTO_LANG_LABEL: '界面/提示语言（CN/EN）',
+    HARVEST_AUTO_LANG_INVALID: '请输入 CN 或 EN',
+    //
+    CHANGE_ENV_DONE: '设置/修改已完成。',
+    CHANGE_ENV_DONE_EN: 'Configuration updated.',
+    CHANGE_ENV_NOT_FOUND: '配置文件不存在，请先执行任意填报或初始化.',
+    CHANGE_ENV_NOT_FOUND_EN:
+      'Config file not found, please run any report or initialization first.',
+
     HOURS_RANGE_ERROR:
       '明细条数与每日总工时、单条区间不符，请减少条数或调整规则。',
     HOURS_SAMPLING_ERROR: '采样超出重试限制，请减少条数或调整工时设置。',
     PROJECT_NOT_MAPPED: (project) => `项目[${project}]未配置映射`,
     TASK_NOT_MAPPED: (task) => `任务[${task}]未配置映射`,
+    // 通用校验
+    NOT_EMPTY_ERROR: '不能为空',
+    NOT_EMPTY_ERROR_EN: 'Cannot be empty',
   },
   EN: {
+    // --- Added: env change interactive prompts ---
+    CHANGE_ENV_SELECT_FIELDS:
+      'Select fields to change (multi-select is allowed):',
+    CHANGE_ENV_SELECT_FIELDS_EN:
+      'Select fields to change (multi-select is allowed):',
+    CHANGE_ENV_FIELD_ALL: 'All fields (edit all one by one)',
+    CHANGE_ENV_FIELD_ALL_EN: 'All fields (edit all one by one)',
+    CHANGE_ENV_MUST_SELECT: 'Select at least one',
+    CHANGE_ENV_MUST_SELECT_EN: 'Select at least one',
+    CHANGE_ENV_DONE: 'Configuration updated.',
+    CHANGE_ENV_DONE_EN: 'Configuration updated.',
+    CHANGE_ENV_NOT_FOUND:
+      'Config file not found, please run any report or initialization first.',
+    CHANGE_ENV_NOT_FOUND_EN:
+      'Config file not found, please run any report or initialization first.',
+    ONLY_SELECT_ALL_OR_SUBSET:
+      'Please select either "All fields" or a subset, not both at once',
+    // for mode select
+    CHANGE_ENV_CHOOSE_MODE:
+      'Please choose whether to change all fields or just specific ones:',
+    CHANGE_ENV_CHOOSE_ALL: 'All fields (edit all in order)',
+    CHANGE_ENV_CHOOSE_PART: 'Select some fields (multi-select)',
+    // HARVEST_AUTO_LANG field
+    HARVEST_AUTO_LANG_LABEL: 'Interface/prompt language (CN/EN)',
+    HARVEST_AUTO_LANG_INVALID: 'Please enter CN or EN',
+
     HARVEST_ACCOUNT_ID: 'Please input your Harvest account ID',
     HARVEST_TOKEN: 'Please input your Harvest API Token',
     USER_AGENT: 'Please input a custom identifier (e.g. your email)',
@@ -89,6 +143,7 @@ const MSG = {
     READ_FAIL: 'Failed to read/parse the daily report file:',
     NO_VALID_REPORT: 'No valid daily report content found',
     DRY_RUN: '[dry-run] No actual submission.',
+    DRY_RUN_DESC: 'Dry run, only output results, no actual submission',
     CANCEL: 'Operation cancelled.',
     EXIT_MID:
       '⚠️ Detected that you cancelled the operation during interaction. Program exited. To continue, please re-run the command.',
@@ -97,6 +152,7 @@ const MSG = {
     LANG_ZH: '简体中文 (CN)',
     LANG_EN: 'English (EN)',
     IS_OK: 'Is this correct?',
+    HELP_DESC: 'Display help information',
     SIGINT:
       '⚠️ Detected you used Ctrl+C to interrupt, program exited. Please re-run to continue.',
     // 填报流程
@@ -120,6 +176,9 @@ const MSG = {
       'Sampling exceeded retry limit, please reduce item count or adjust hour settings.',
     PROJECT_NOT_MAPPED: (project) => `Project [${project}] is not mapped.`,
     TASK_NOT_MAPPED: (task) => `Task [${task}] is not mapped.`,
+    // 通用校验
+    NOT_EMPTY_ERROR: 'Cannot be empty',
+    NOT_EMPTY_ERROR_EN: 'Cannot be empty',
   },
 };
 
